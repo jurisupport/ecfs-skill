@@ -11,6 +11,85 @@
 - **소송비용 납부** — 인지액·송달료 계산, 가상계좌 발급(--confirm 게이트), 납부 확인
 - **WebSquare 함정 대응 노트** — 금액칸 10배 입력 사고, CKEditor 주입, 모달 클릭 무시 등 실전에서 축적한 우회법
 
+## 설치
+
+### 1. 저장소 클론
+
+Claude Code 스킬 폴더에 바로 클론합니다.
+
+```bash
+git clone git@github.com:jurisupport/ecfs-skill.git ~/.claude/skills/ecfs
+cd ~/.claude/skills/ecfs
+npm install          # playwright 설치
+```
+
+브라우저는 시스템에 설치된 **Google Chrome**을 사용합니다(`channel: 'chrome'`). Chrome이 없다면 [google.com/chrome](https://www.google.com/chrome/)에서 설치하세요.
+
+### 2. 자격증명 금고 만들기
+
+[sops](https://github.com/getsops/sops)와 [age](https://github.com/FiloSottile/age)로 암호화 금고를 만듭니다.
+
+```bash
+brew install sops age
+
+mkdir -p ~/.config/k-skill/age
+age-keygen -o ~/.config/k-skill/age/keys.txt        # 출력되는 public key 복사
+chmod 600 ~/.config/k-skill/age/keys.txt
+
+cat > ~/.config/k-skill/.sops.yaml <<EOF
+creation_rules:
+  - path_regex: .*secrets\.env(\.plain)?$
+    age: <위에서 복사한 public key>
+EOF
+
+# 평문으로 작성 → 암호화 → 평문 삭제
+cat > ~/.config/k-skill/secrets.env.plain <<EOF
+ECFS_ID=전자소송_아이디
+ECFS_CERT_PW=공동인증서_암호
+ECFS_CERT_DIR=/Users/<계정>/Library/Preferences/NPKI/yessign/USER/cn=.../...
+EOF
+cd ~/.config/k-skill
+SOPS_AGE_KEY_FILE=age/keys.txt sops -e --input-type dotenv --output-type dotenv secrets.env.plain > secrets.env
+rm secrets.env.plain && chmod 600 secrets.env
+```
+
+이후 값 추가·수정은 `SOPS_AGE_KEY_FILE=age/keys.txt sops secrets.env` 한 줄로 합니다.
+⚠️ 평문 임시 파일명은 반드시 `secrets.env.plain`이어야 합니다(`.sops.yaml`의 `path_regex` 규칙).
+
+| 키 | 용도 | 필수 |
+|---|---|---|
+| `ECFS_ID` | 전자소송 아이디 | ✅ |
+| `ECFS_CERT_PW` | 공동인증서 암호 | ✅ |
+| `ECFS_CERT_DIR` | NPKI 인증서 폴더 절대경로 | ✅ |
+| `GMAIL_USER` / `GMAIL_APP_PW` | 송달 알림 감시용 Gmail·앱 비밀번호 | 데몬 사용 시 |
+| `TELEGRAM_CHAT_ID` | 송달 알림 받을 텔레그램 chat id | 데몬 사용 시 |
+| `ECFS_DELIVERY_DIR` | 송달문서 PDF 저장 폴더 (기본 `~/ecfs-delivery`) | 선택 |
+
+금고 대신 같은 이름의 **환경변수**로 줘도 됩니다(환경변수가 우선).
+
+### 3. 동작 확인
+
+```bash
+cd ~/.claude/skills/ecfs
+node -e "const{secret}=require('./k-secrets');console.log('ID:',secret('ECFS_ID'))"   # 금고 연결 확인
+node ecfs-cost-calc.js --sua 100000000 --defendants 1                                  # 브라우저 없이 계산기 테스트
+node ecfs-check-delivery.js                                                            # 실제 로그인 + 송달문서 점검
+```
+
+### 4. 송달 알림 감시 데몬 (선택)
+
+법원 전자발송 메일을 감지해 자동 수집·텔레그램 알림을 보내는 상시 데몬입니다. `GMAIL_*`·`TELEGRAM_CHAT_ID` 키를 채운 뒤:
+
+```bash
+sed "s|HOME_DIR|$HOME|g" launchd/local.ecfs-mailwatch.plist.example \
+  > ~/Library/LaunchAgents/local.ecfs-mailwatch.plist
+mkdir -p logs
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.ecfs-mailwatch.plist
+tail -f logs/mailwatch.log      # "IMAP 연결됨. 감시 중..." 확인
+```
+
+중지는 `launchctl bootout gui/$(id -u)/local.ecfs-mailwatch`.
+
 ## 사용법
 
 Claude Code 스킬 폴더(`~/.claude/skills/ecfs/`)에 두고 자연어로 요청합니다. 상세 절차·스크립트 목록·주의사항은 [SKILL.md](SKILL.md) 참조.
@@ -23,14 +102,13 @@ Claude Code 스킬 폴더(`~/.claude/skills/ecfs/`)에 두고 자연어로 요�
 
 ## 자격증명
 
-소스에 자격증명이 없습니다. [sops](https://github.com/getsops/sops)+age로 암호화된 금고(`~/.config/k-skill/secrets.env`)에서 `k-secrets.js`/`k_secrets.py` 로더가 읽습니다(환경변수 우선). 필요한 키: `ECFS_ID`, `ECFS_CERT_PW`, `ECFS_CERT_DIR`, `GMAIL_USER`, `GMAIL_APP_PW`, `TELEGRAM_CHAT_ID`.
-선택 키: `ECFS_DELIVERY_DIR`(송달문서 PDF 저장 폴더, 미설정 시 `~/ecfs-delivery`).
+소스에 자격증명이 없습니다. `k-secrets.js`/`k_secrets.py` 로더가 환경변수 → sops 금고 순으로 읽습니다. 키 목록과 금고 생성 방법은 위 [설치](#설치) 절 참조.
 
 ## 요구사항
 
-- macOS, Node.js, Playwright(Chrome 채널), Python 3
+- macOS, Node.js 18+, Python 3, Google Chrome
 - 공동인증서(NPKI `signCert.der` + `signPri.key`)
-- 전자소송포털 계정
+- 전자소송포털 계정 (공동인증서 등록 완료 상태)
 
 ## 주의
 
