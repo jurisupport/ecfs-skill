@@ -1,0 +1,22 @@
+# 의존성·캐시
+node_modules/
+__pycache__/
+
+# 런타임 상태·로그 (개인 사건정보 포함 — 절대 커밋 금지)
+logs/
+.mail-watch-state.json
+*.log
+
+# 백업·임시
+*.bak*
+*.orig
+*.dup
+
+# 사건별 일회성 작업 파일 (진행 중 사건 — 커밋 금지, 종료 후 skills-archive로 이동)
+fix-jemul-*.js
+diag-drafts-*.js
+diag2-drafts.js
+scroll_last_page.js
+kys-submit-*.js
+inspect-jemul-*.js
+*54772*
