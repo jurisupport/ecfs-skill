@@ -13,9 +13,24 @@
 
 ## 설치
 
-### 1. 저장소 클론
+### 원클릭 설치 (권장)
 
-Claude Code 스킬 폴더에 바로 클론합니다.
+```bash
+git clone git@github.com:jurisupport/ecfs-skill.git ~/.claude/skills/ecfs \
+  && cd ~/.claude/skills/ecfs && ./install.sh
+```
+
+`install.sh`가 의존성 확인(node·python3·Chrome), `npm install`, sops+age 설치, 자격증명 금고 생성(전자소송 아이디·인증서 암호를 물어보고 NPKI 인증서 폴더 자동 탐지), 동작 검증까지 한 번에 처리합니다. 이미 설치된 항목은 건너뛰므로 재실행해도 안전합니다.
+
+송달 알림 감시 데몬까지 설치하려면 금고에 `GMAIL_*`·`TELEGRAM_CHAT_ID`를 채운 뒤:
+
+```bash
+./install.sh --with-daemon
+```
+
+아래는 수동 설치 절차입니다(원클릭 설치를 했다면 건너뛰어도 됩니다).
+
+### 1. 저장소 클론 (수동)
 
 ```bash
 git clone git@github.com:jurisupport/ecfs-skill.git ~/.claude/skills/ecfs
@@ -25,7 +40,7 @@ npm install          # playwright 설치
 
 브라우저는 시스템에 설치된 **Google Chrome**을 사용합니다(`channel: 'chrome'`). Chrome이 없다면 [google.com/chrome](https://www.google.com/chrome/)에서 설치하세요.
 
-### 2. 자격증명 금고 만들기
+### 2. 자격증명 금고 만들기 (수동)
 
 [sops](https://github.com/getsops/sops)와 [age](https://github.com/FiloSottile/age)로 암호화 금고를 만듭니다.
 
